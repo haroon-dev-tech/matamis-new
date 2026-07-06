@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS company_observations (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    company_id INT UNSIGNED NOT NULL,
+    head VARCHAR(255) NOT NULL,
+    details TEXT DEFAULT NULL,
+    risk TEXT DEFAULT NULL,
+    recommendations TEXT DEFAULT NULL,
+    status VARCHAR(100) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL DEFAULT NULL,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+    INDEX idx_company_observations_company (company_id)
+) ENGINE=InnoDB;
