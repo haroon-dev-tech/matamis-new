@@ -79,6 +79,7 @@ function soft_delete_rows(PDO $db, string $table, string $where, array $params):
     $allowed = [
         'users', 'companies', 'branches', 'somfp_entries', 'somci_entries', 'company_observations',
         'linked_is_heads', 'linked_is_line_items', 'linked_is_formula_terms', 'linked_is_entries',
+        'linked_bs_heads', 'linked_bs_line_items', 'linked_bs_formula_terms', 'linked_bs_entries',
     ];
     if (!in_array($table, $allowed, true)) {
         throw new InvalidArgumentException('Invalid table for soft delete.');
@@ -113,6 +114,12 @@ function soft_delete_branches(PDO $db, array $branchIds, int $companyId): void
     soft_delete_rows(
         $db,
         'linked_is_entries',
+        "branch_id IN ($placeholders)",
+        $branchIds
+    );
+    soft_delete_rows(
+        $db,
+        'linked_bs_entries',
         "branch_id IN ($placeholders)",
         $branchIds
     );
