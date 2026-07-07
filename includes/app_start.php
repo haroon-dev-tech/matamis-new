@@ -41,6 +41,13 @@
                 <span>Linked IS</span>
                 <span class="nav-link-badge">Income</span>
             </a>
+            <a href="<?= BASE_URL ?>/linked-bs/index.php" class="nav-link <?= $activeNav === 'linked-bs' ? 'active' : '' ?>">
+                <span class="nav-link-icon">
+                    <svg class="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M5 6h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+                </span>
+                <span>Linked BS</span>
+                <span class="nav-link-badge">Balance</span>
+            </a>
 
             <p class="nav-section-label mt-6">Financial Reports</p>
             <a href="<?= BASE_URL ?>/somfp/index.php" class="nav-link <?= $activeNav === 'somfp' ? 'active' : '' ?>">
