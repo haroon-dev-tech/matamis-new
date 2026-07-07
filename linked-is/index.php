@@ -6,9 +6,7 @@ require __DIR__ . '/../includes/bootstrap.php';
 require __DIR__ . '/../includes/linked_is.php';
 
 $userId = current_user_id();
-$stmt = $db->prepare('SELECT id, name FROM companies WHERE user_id = ? AND ' . not_deleted() . ' ORDER BY name ASC');
-$stmt->execute([$userId]);
-$companies = $stmt->fetchAll();
+$companies = get_accessible_companies($db, $userId, 'linked_is');
 
 require __DIR__ . '/../includes/header.php';
 ?>

@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/../config/database.php';
+apply_security_headers();
 
 if (!empty($requireAuth)) {
     require_login();
@@ -14,6 +15,7 @@ if (!empty($requireAuth)) {
 $db = getDB();
 $currentUser = get_auth_user($db);
 $flash = get_flash();
+log_current_request($db, $currentUser);
 
 if (!empty($requireAuth) && $currentUser) {
     ensure_rbac_seeded($db);

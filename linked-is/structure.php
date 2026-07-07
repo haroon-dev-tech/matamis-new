@@ -8,9 +8,7 @@ require __DIR__ . '/../includes/linked_is.php';
 $userId = current_user_id();
 $companyId = (int) ($_GET['company_id'] ?? $_POST['company_id'] ?? 0);
 
-$stmt = $db->prepare('SELECT id, name FROM companies WHERE user_id = ? AND ' . not_deleted() . ' ORDER BY name ASC');
-$stmt->execute([$userId]);
-$companies = $stmt->fetchAll();
+$companies = get_accessible_companies($db, $userId, 'linked_is');
 
 if (!$companyId && !empty($companies)) {
     $companyId = (int) $companies[0]['id'];
@@ -18,7 +16,7 @@ if (!$companyId && !empty($companies)) {
 
 $error = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $companyId && user_owns_company($db, $companyId, $userId)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $companyId && can_access_company($db, $companyId, $userId, 'linked_is')) {
     if (!verify_csrf()) {
         $error = 'Invalid security token.';
     } else {
@@ -73,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $companyId && user_owns_company($db
     }
 }
 
-$structure = ($companyId && user_owns_company($db, $companyId, $userId))
+$structure = ($companyId && can_access_company($db, $companyId, $userId, 'linked_is'))
     ? get_linked_is_structure($db, $companyId)
     : ['heads' => []];
 
