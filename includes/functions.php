@@ -2,8 +2,44 @@
 
 require_once __DIR__ . '/../config/app.php';
 
-if (session_status() === PHP_SESSION_NONE) {
+function using_https(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        return true;
+    }
+    if (!empty($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443) {
+        return true;
+    }
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string) $_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+        return true;
+    }
+    return false;
+}
+
+function bootstrap_secure_session(): void
+{
+    if (session_status() !== PHP_SESSION_NONE) {
+        return;
+    }
+
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.cookie_httponly', '1');
+    ini_set('session.cookie_samesite', 'Lax');
+
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'secure' => using_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
     session_start();
+}
+
+if (session_status() === PHP_SESSION_NONE) {
+    bootstrap_secure_session();
 }
 
 function e(?string $value): string
@@ -27,6 +63,20 @@ function redirect(string $path): void
 {
     header('Location: ' . BASE_URL . $path);
     exit;
+}
+
+function apply_security_headers(): void
+{
+    if (headers_sent()) {
+        return;
+    }
+
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+    header('Cross-Origin-Opener-Policy: same-origin');
+    header('Cross-Origin-Resource-Policy: same-origin');
 }
 
 function csrf_token(): string
@@ -257,6 +307,41 @@ function user_owns_company(PDO $db, int $companyId, int $userId): bool
     $stmt = $db->prepare('SELECT id FROM companies WHERE id = ? AND user_id = ? AND ' . not_deleted());
     $stmt->execute([$companyId, $userId]);
     return (bool) $stmt->fetch();
+}
+
+function can_access_company(PDO $db, int $companyId, int $userId, ?string $contextPermission = null): bool
+{
+    if ($companyId <= 0 || $userId <= 0) {
+        return false;
+    }
+
+    if (user_owns_company($db, $companyId, $userId)) {
+        return true;
+    }
+
+    if ($contextPermission && (user_can($db, $userId, $contextPermission, 'read') || user_can($db, $userId, $contextPermission, 'write'))) {
+        $stmt = $db->prepare('SELECT id FROM companies WHERE id = ? AND ' . not_deleted());
+        $stmt->execute([$companyId]);
+        return (bool) $stmt->fetch();
+    }
+
+    return false;
+}
+
+function get_accessible_companies(PDO $db, int $userId, ?string $contextPermission = null): array
+{
+    if (
+        $contextPermission &&
+        (user_can($db, $userId, $contextPermission, 'read') || user_can($db, $userId, $contextPermission, 'write'))
+    ) {
+        $stmt = $db->prepare('SELECT id, name FROM companies WHERE ' . not_deleted() . ' ORDER BY name ASC');
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    $stmt = $db->prepare('SELECT id, name FROM companies WHERE user_id = ? AND ' . not_deleted() . ' ORDER BY name ASC');
+    $stmt->execute([$userId]);
+    return $stmt->fetchAll();
 }
 
 function period_key(int $year, int $month): int
@@ -742,6 +827,266 @@ function require_permission(PDO $db, ?int $userId, string $permKey, string $mode
     if (user_can($db, $userId, $permKey, $mode)) {
         return;
     }
+    log_activity($db, [
+        'user_id' => $userId,
+        'event_type' => 'access_denied',
+        'action' => 'deny',
+        'module' => $permKey,
+        'description' => 'Permission denied for requested resource.',
+        'metadata' => [
+            'required_permission' => $permKey,
+            'required_mode' => $mode,
+        ],
+    ]);
+
+    if ($permKey === 'dashboard' && $mode === 'read') {
+        flash('error', 'Dashboard is not available for your role. Redirected to your landing page.');
+        redirect(get_default_landing_path($db, $userId));
+    }
+
     flash('error', 'You are not authorized to access this page.');
     redirect('/forbidden.php');
+}
+
+function get_default_landing_path(PDO $db, ?int $userId): string
+{
+    if (!$userId) {
+        return '/login.php';
+    }
+    if (!empty($_SESSION['rbac_disabled'])) {
+        return '/dashboard.php';
+    }
+
+    $routes = [
+        'dashboard' => '/dashboard.php',
+        'companies' => '/companies/index.php',
+        'observations' => '/observations/index.php',
+        'linked_is' => '/linked-is/index.php',
+        'linked_bs' => '/linked-bs/index.php',
+        'somfp' => '/somfp/index.php',
+        'somci' => '/somci/index.php',
+        'sofp' => '/sofp/index.php',
+        'soci' => '/soci/index.php',
+        'glance' => '/glance/index.php',
+        'settings_users' => '/settings/users.php',
+        'settings_roles' => '/settings/roles.php',
+    ];
+
+    foreach ($routes as $perm => $path) {
+        if (user_can($db, $userId, $perm, 'read')) {
+            return $path;
+        }
+    }
+
+    return '/landing.php';
+}
+
+function ensure_audit_logs_table(PDO $db): void
+{
+    if (!empty($_SESSION['audit_logs_checked'])) {
+        return;
+    }
+
+    try {
+        $db->query('SELECT 1 FROM activity_logs LIMIT 1');
+        $_SESSION['audit_logs_checked'] = true;
+        return;
+    } catch (PDOException $e) {
+        // Continue and create it below.
+    }
+
+    $sql = "CREATE TABLE IF NOT EXISTS activity_logs (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT UNSIGNED NULL,
+        user_name VARCHAR(150) NULL,
+        user_email VARCHAR(150) NULL,
+        event_type VARCHAR(50) NOT NULL,
+        action VARCHAR(50) NOT NULL,
+        module_key VARCHAR(100) NULL,
+        route_path VARCHAR(255) NOT NULL,
+        request_method VARCHAR(10) NOT NULL,
+        ip_address VARCHAR(64) NULL,
+        user_agent VARCHAR(255) NULL,
+        description VARCHAR(255) NULL,
+        metadata_json JSON NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_activity_logs_user (user_id),
+        INDEX idx_activity_logs_event (event_type),
+        INDEX idx_activity_logs_created (created_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;";
+
+    try {
+        $db->exec($sql);
+        $_SESSION['audit_logs_checked'] = true;
+    } catch (PDOException $e) {
+        $_SESSION['audit_logs_checked'] = true;
+    }
+}
+
+function request_ip_address(): string
+{
+    $keys = ['HTTP_X_FORWARDED_FOR', 'HTTP_CLIENT_IP', 'REMOTE_ADDR'];
+    foreach ($keys as $key) {
+        if (!empty($_SERVER[$key])) {
+            $value = trim((string) $_SERVER[$key]);
+            if ($key === 'HTTP_X_FORWARDED_FOR') {
+                $parts = explode(',', $value);
+                return trim($parts[0]);
+            }
+            return $value;
+        }
+    }
+    return 'unknown';
+}
+
+function is_login_rate_limited(PDO $db, string $email, string $ip): bool
+{
+    // 8 failed attempts in 15 minutes from same IP/email pair will be blocked.
+    try {
+        ensure_audit_logs_table($db);
+        $stmt = $db->prepare(
+            'SELECT COUNT(*) FROM activity_logs
+             WHERE event_type = ? AND action = ? AND created_at >= (NOW() - INTERVAL 15 MINUTE)
+             AND (ip_address = ? OR (user_email IS NOT NULL AND user_email = ?))'
+        );
+        $stmt->execute(['auth', 'login_failed', $ip, $email]);
+        $count = (int) $stmt->fetchColumn();
+        return $count >= 8;
+    } catch (PDOException $e) {
+        // If logs table is unavailable, do not break login flow.
+        return false;
+    }
+}
+
+function infer_activity_action(string $scriptName, string $method, array $postData = []): array
+{
+    $path = strtolower($scriptName);
+    $method = strtoupper($method);
+    $eventType = 'view';
+    $action = 'view_page';
+
+    if ($method === 'POST') {
+        $eventType = 'write';
+        $action = 'update';
+        foreach (array_keys($postData) as $key) {
+            $key = strtolower((string) $key);
+            if (strpos($key, 'delete') !== false || strpos($key, 'remove') !== false) {
+                return ['delete', 'delete_record'];
+            }
+        }
+        if (strpos($path, 'create.php') !== false || strpos($path, 'register.php') !== false || strpos($path, '/entry.php') !== false) {
+            return ['create', 'create_record'];
+        }
+        if (strpos($path, 'edit.php') !== false) {
+            return ['update', 'edit_record'];
+        }
+        return [$eventType, $action];
+    }
+
+    if (strpos($path, 'view.php') !== false) {
+        return ['view', 'view_record'];
+    }
+    if (strpos($path, 'index.php') !== false) {
+        return ['view', 'list_page'];
+    }
+    if (strpos($path, 'create.php') !== false || strpos($path, 'edit.php') !== false || strpos($path, '/entry.php') !== false) {
+        return ['view', 'form_page'];
+    }
+
+    return [$eventType, $action];
+}
+
+function log_activity(PDO $db, array $data): void
+{
+    ensure_audit_logs_table($db);
+
+    $routePath = (string) ($_SERVER['SCRIPT_NAME'] ?? '');
+    $requestMethod = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    $ip = request_ip_address();
+    $agent = substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255);
+
+    $userId = isset($data['user_id']) ? (int) $data['user_id'] : null;
+    $userName = $data['user_name'] ?? ($_SESSION['user_name'] ?? null);
+    $userEmail = $data['user_email'] ?? null;
+    $module = $data['module'] ?? null;
+
+    if ($userId && $userEmail === null) {
+        try {
+            $stmt = $db->prepare('SELECT full_name, email FROM users WHERE id = ?');
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $userName = $row['full_name'] ?? $userName;
+                $userEmail = $row['email'] ?? null;
+            }
+        } catch (PDOException $e) {
+            // Ignore user lookup failure and continue logging.
+        }
+    }
+
+    $stmt = $db->prepare(
+        'INSERT INTO activity_logs (
+            user_id, user_name, user_email, event_type, action, module_key,
+            route_path, request_method, ip_address, user_agent, description, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+
+    try {
+        $stmt->execute([
+            $userId,
+            $userName,
+            $userEmail,
+            (string) ($data['event_type'] ?? 'view'),
+            (string) ($data['action'] ?? 'view_page'),
+            $module ? (string) $module : null,
+            $routePath,
+            $requestMethod,
+            $ip,
+            $agent,
+            isset($data['description']) ? (string) $data['description'] : null,
+            !empty($data['metadata']) ? json_encode($data['metadata']) : null,
+        ]);
+    } catch (PDOException $e) {
+        // Logging failures should never break app flow.
+    }
+}
+
+function log_current_request(PDO $db, ?array $currentUser): void
+{
+    static $alreadyLogged = false;
+
+    if (!empty($_SERVER['REQUEST_URI']) && strpos((string) $_SERVER['REQUEST_URI'], '/assets/') !== false) {
+        return;
+    }
+    if ($alreadyLogged) {
+        return;
+    }
+
+    [$eventType, $action] = infer_activity_action(
+        (string) ($_SERVER['SCRIPT_NAME'] ?? ''),
+        (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
+        $_POST ?? []
+    );
+
+    $required = infer_permission_for_request(
+        (string) ($_SERVER['SCRIPT_NAME'] ?? ''),
+        (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')
+    );
+    $module = $required ? $required[0] : null;
+
+    log_activity($db, [
+        'user_id' => $currentUser['id'] ?? null,
+        'user_name' => $currentUser['full_name'] ?? null,
+        'user_email' => $currentUser['email'] ?? null,
+        'event_type' => $eventType,
+        'action' => $action,
+        'module' => $module,
+        'description' => 'HTTP request activity',
+        'metadata' => [
+            'query_string' => $_SERVER['QUERY_STRING'] ?? '',
+        ],
+    ]);
+
+    $alreadyLogged = true;
 }

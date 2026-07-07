@@ -12,15 +12,13 @@ $year = (int) ($_GET['year'] ?? $_POST['year'] ?? date('Y'));
 $month = (int) ($_GET['month'] ?? $_POST['month'] ?? date('n'));
 $entryDate = $_GET['entry_date'] ?? $_POST['entry_date'] ?? date('Y-m-d');
 
-$stmt = $db->prepare('SELECT id, name FROM companies WHERE user_id = ? AND ' . not_deleted() . ' ORDER BY name ASC');
-$stmt->execute([$userId]);
-$companies = $stmt->fetchAll();
+$companies = get_accessible_companies($db, $userId, 'linked_is');
 
 if (!$companyId && !empty($companies)) {
     $companyId = (int) $companies[0]['id'];
 }
 
-if (!$companyId || !user_owns_company($db, $companyId, $userId)) {
+if (!$companyId || !can_access_company($db, $companyId, $userId, 'linked_is')) {
     flash('error', 'Please select a valid company.');
     redirect('/linked-is/index.php');
 }
