@@ -14,5 +14,14 @@ if (!empty($requireAuth)) {
 $db = getDB();
 $currentUser = get_auth_user($db);
 $flash = get_flash();
+
+if (!empty($requireAuth) && $currentUser) {
+    ensure_rbac_seeded($db);
+    $required = infer_permission_for_request($_SERVER['SCRIPT_NAME'] ?? '', $_SERVER['REQUEST_METHOD'] ?? 'GET');
+    if ($required) {
+        [$permKey, $mode] = $required;
+        require_permission($db, current_user_id(), $permKey, $mode);
+    }
+}
 $pageTitle = $pageTitle ?? APP_NAME;
 $activeNav = $activeNav ?? '';
