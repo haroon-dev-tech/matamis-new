@@ -30,6 +30,7 @@ function handle_login(): ?string
 
     $_SESSION['user_id'] = $user['id'];
     $_SESSION['user_name'] = $user['full_name'];
+    unset($_SESSION['rbac_perm_cache']);
     flash('success', 'Welcome back, ' . $user['full_name'] . '!');
     redirect('/dashboard.php');
 }
@@ -74,6 +75,7 @@ function handle_register(): ?string
 
     $_SESSION['user_id'] = (int) $db->lastInsertId();
     $_SESSION['user_name'] = $fullName;
+    unset($_SESSION['rbac_perm_cache']);
     flash('success', 'Account created successfully. Welcome to Mata MIS!');
     redirect('/dashboard.php');
 }

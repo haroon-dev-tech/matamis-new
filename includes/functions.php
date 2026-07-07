@@ -594,3 +594,154 @@ function get_company_observation(PDO $db, int $observationId, int $companyId): ?
     $row = $stmt->fetch();
     return $row ?: null;
 }
+
+function ensure_rbac_seeded(PDO $db): void
+{
+    if (!empty($_SESSION['rbac_seeded'])) {
+        return;
+    }
+
+    try {
+        $db->query('SELECT 1 FROM roles LIMIT 1');
+        $db->query('SELECT 1 FROM permissions LIMIT 1');
+        $db->query('SELECT 1 FROM role_permissions LIMIT 1');
+        $db->query('SELECT 1 FROM user_roles LIMIT 1');
+    } catch (PDOException $e) {
+        // RBAC not migrated yet; keep app usable until migration is applied.
+        $_SESSION['rbac_disabled'] = true;
+        $_SESSION['rbac_seeded'] = true;
+        return;
+    }
+
+    $perms = [
+        ['dashboard', 'Dashboard', 'Access dashboard'],
+        ['companies', 'Companies', 'Manage companies and branches'],
+        ['observations', 'Observations', 'Manage observations & recommendations'],
+        ['linked_is', 'Linked IS', 'Manage linked income statement entries'],
+        ['linked_bs', 'Linked BS', 'Manage linked balance sheet entries'],
+        ['somfp', 'SOMFP', 'Manage SOMFP entries and reports'],
+        ['somci', 'SOMCI', 'Manage SOMCI entries and reports'],
+        ['sofp', 'SOFP', 'Access overall statement of financial position'],
+        ['soci', 'SOCI', 'Access overall statement of comprehensive income'],
+        ['glance', 'Glance', 'Access glance picture insights'],
+        ['settings_users', 'Settings: Users', 'Manage users and role assignment'],
+        ['settings_roles', 'Settings: Roles', 'Manage roles and permissions'],
+    ];
+
+    $db->beginTransaction();
+    try {
+        $stmt = $db->prepare('INSERT INTO permissions (perm_key, label, description) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE label = VALUES(label), description = VALUES(description)');
+        foreach ($perms as [$key, $label, $desc]) {
+            $stmt->execute([$key, $label, $desc]);
+        }
+
+        $db->commit();
+        unset($_SESSION['rbac_disabled']);
+        $_SESSION['rbac_seeded'] = true;
+    } catch (Exception $e) {
+        $db->rollBack();
+        $_SESSION['rbac_seeded'] = true;
+    }
+}
+
+function get_user_permissions(PDO $db, int $userId): array
+{
+    if (isset($_SESSION['rbac_perm_cache']) && is_array($_SESSION['rbac_perm_cache'])) {
+        return $_SESSION['rbac_perm_cache'];
+    }
+
+    try {
+        $sql = 'SELECT p.perm_key,
+                       MAX(rp.can_read) AS can_read,
+                       MAX(rp.can_write) AS can_write
+                FROM user_roles ur
+                INNER JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL
+                INNER JOIN role_permissions rp ON rp.role_id = r.id
+                INNER JOIN permissions p ON p.id = rp.permission_id
+                WHERE ur.user_id = ?
+                GROUP BY p.perm_key';
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$userId]);
+        $rows = $stmt->fetchAll();
+    } catch (PDOException $e) {
+        $_SESSION['rbac_perm_cache'] = [];
+        return [];
+    }
+
+    $map = [];
+    foreach ($rows as $row) {
+        $map[$row['perm_key']] = [
+            'read' => (bool) $row['can_read'],
+            'write' => (bool) $row['can_write'],
+        ];
+    }
+
+    $_SESSION['rbac_perm_cache'] = $map;
+    return $map;
+}
+
+function user_can(PDO $db, ?int $userId, string $permKey, string $mode = 'read'): bool
+{
+    if (!empty($_SESSION['rbac_disabled'])) {
+        return true;
+    }
+    if (!$userId) {
+        return false;
+    }
+    $mode = $mode === 'write' ? 'write' : 'read';
+    $perms = get_user_permissions($db, $userId);
+    return !empty($perms[$permKey][$mode]);
+}
+
+function infer_permission_for_request(string $scriptName, string $method): ?array
+{
+    $path = strtolower($scriptName);
+    $method = strtoupper($method);
+
+    // Settings
+    if (strpos($path, '/settings/users') !== false || strpos($path, '/settings/user_') !== false) {
+        return ['settings_users', $method === 'POST' ? 'write' : 'read'];
+    }
+    if (strpos($path, '/settings/roles') !== false || strpos($path, '/settings/role_') !== false) {
+        return ['settings_roles', $method === 'POST' ? 'write' : 'read'];
+    }
+
+    $moduleMap = [
+        '/companies/' => 'companies',
+        '/observations/' => 'observations',
+        '/linked-is/' => 'linked_is',
+        '/linked-bs/' => 'linked_bs',
+        '/somfp/' => 'somfp',
+        '/somci/' => 'somci',
+        '/sofp/' => 'sofp',
+        '/soci/' => 'soci',
+        '/glance/' => 'glance',
+    ];
+
+    foreach ($moduleMap as $prefix => $permKey) {
+        if (strpos($path, $prefix) !== false) {
+            $isWriteByName = (
+                strpos($path, 'create.php') !== false ||
+                strpos($path, 'edit.php') !== false ||
+                strpos($path, 'entry.php') !== false
+            );
+            $mode = ($method === 'POST' || $isWriteByName) ? 'write' : 'read';
+            return [$permKey, $mode];
+        }
+    }
+
+    if (strpos($path, '/dashboard.php') !== false) {
+        return ['dashboard', 'read'];
+    }
+
+    return null;
+}
+
+function require_permission(PDO $db, ?int $userId, string $permKey, string $mode): void
+{
+    if (user_can($db, $userId, $permKey, $mode)) {
+        return;
+    }
+    flash('error', 'You are not authorized to access this page.');
+    redirect('/forbidden.php');
+}
