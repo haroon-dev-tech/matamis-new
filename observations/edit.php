@@ -86,7 +86,9 @@ require __DIR__ . '/../includes/header.php';
         <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-200"><?= e($error) ?></div>
         <?php endif; ?>
 
-        <form method="POST" class="space-y-5">
+        <form method="POST" id="observation-form" class="space-y-5"
+              data-generate-url="<?= e(BASE_URL . '/observations/api/generate.php') ?>"
+              data-company-name="<?= e($company['name']) ?>">
             <?= csrf_field() ?>
             <input type="hidden" name="company_id" value="<?= $companyId ?>">
             <input type="hidden" name="id" value="<?= $observationId ?>">
@@ -101,14 +103,16 @@ require __DIR__ . '/../includes/header.php';
                 <textarea name="details" class="input-field" rows="4"><?= e($formData['details'] ?? '') ?></textarea>
             </div>
 
+            <?php require __DIR__ . '/partials/ai_generate.php'; ?>
+
             <div>
                 <label class="mb-1.5 block text-sm font-medium">Risk</label>
-                <textarea name="risk" class="input-field" rows="4"><?= e($formData['risk'] ?? '') ?></textarea>
+                <textarea name="risk" class="input-field" rows="4" placeholder="Identified risks (or generate with AI above)"><?= e($formData['risk'] ?? '') ?></textarea>
             </div>
 
             <div>
                 <label class="mb-1.5 block text-sm font-medium">Recommendations</label>
-                <textarea name="recommendations" class="input-field" rows="4"><?= e($formData['recommendations'] ?? '') ?></textarea>
+                <textarea name="recommendations" class="input-field" rows="4" placeholder="Recommended actions (or generate with AI above)"><?= e($formData['recommendations'] ?? '') ?></textarea>
             </div>
 
             <div>
@@ -129,5 +133,7 @@ require __DIR__ . '/../includes/header.php';
         </form>
     </div>
 </div>
+
+<script src="<?= e(versioned_asset('/assets/js/observations-ai.js')) ?>"></script>
 
 <?php require __DIR__ . '/../includes/footer.php'; ?>

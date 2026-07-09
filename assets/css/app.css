@@ -978,3 +978,29 @@
     line-height: 1.5;
     word-break: break-word;
 }
+
+.observations-table {
+    table-layout: auto;
+}
+
+.observations-table th,
+.observations-table td {
+    vertical-align: top;
+}
+
+.observations-table .observations-cell-text {
+    min-width: 14rem;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+}
+
+.observations-table td:first-child {
+    min-width: 8rem;
+    word-break: break-word;
+}
+
+.observations-table td:last-child {
+    min-width: 7rem;
+    white-space: nowrap;
+}
