@@ -87,30 +87,53 @@ require __DIR__ . '/../includes/header.php';
     <a href="<?= BASE_URL ?>/observations/create.php?company_id=<?= $selectedCompanyId ?>" class="btn-primary mt-4">Add First Observation</a>
 </div>
 <?php else: ?>
+<?php
+$cellText = static function (?string $text): string {
+    $text = trim((string) $text);
+    return $text === '' ? '—' : $text;
+};
+?>
 <div class="card overflow-hidden">
     <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
         <h2 class="font-semibold"><?= e($selectedCompany['name']) ?> — Observations (<?= count($observations) ?>)</h2>
     </div>
     <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="observations-table w-full text-sm">
             <thead>
                 <tr class="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-                    <th class="px-6 py-3 text-left font-semibold">Head</th>
-                    <th class="px-6 py-3 text-left font-semibold">Status</th>
-                    <th class="px-6 py-3 text-left font-semibold">Last Updated</th>
-                    <th class="px-6 py-3 text-right font-semibold">Actions</th>
+                    <th class="px-4 py-3 text-left font-semibold">Head</th>
+                    <th class="px-4 py-3 text-left font-semibold">Details</th>
+                    <th class="px-4 py-3 text-left font-semibold">Risk</th>
+                    <th class="px-4 py-3 text-left font-semibold">Recommendations</th>
+                    <th class="px-4 py-3 text-left font-semibold">Status</th>
+                    <th class="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
                 <?php foreach ($observations as $row): ?>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                    <td class="px-6 py-4 font-medium"><?= e($row['head']) ?></td>
-                    <td class="px-6 py-4 text-slate-500"><?= e($row['status'] ?: '—') ?></td>
-                    <td class="px-6 py-4 text-slate-500"><?= date('d M Y H:i', strtotime($row['updated_at'])) ?></td>
-                    <td class="px-6 py-4 text-right">
-                        <div class="table-actions">
-                            <a href="<?= BASE_URL ?>/observations/view.php?id=<?= $row['id'] ?>&company_id=<?= $selectedCompanyId ?>" class="btn-action btn-action-view">View</a>
-                            <span class="table-action-sep">|</span>
+                <?php $status = $row['status'] ?? ''; ?>
+                <tr class="align-top hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                    <td class="px-4 py-4 font-medium text-slate-900 dark:text-white"><?= e($row['head']) ?></td>
+                    <td class="px-4 py-4 text-slate-600 dark:text-slate-300">
+                        <div class="observations-cell-text whitespace-pre-wrap"><?= e($cellText($row['details'] ?? null)) ?></div>
+                    </td>
+                    <td class="px-4 py-4 text-slate-600 dark:text-slate-300">
+                        <div class="observations-cell-text whitespace-pre-wrap"><?= e($cellText($row['risk'] ?? null)) ?></div>
+                    </td>
+                    <td class="px-4 py-4 text-slate-600 dark:text-slate-300">
+                        <div class="observations-cell-text whitespace-pre-wrap"><?= e($cellText($row['recommendations'] ?? null)) ?></div>
+                    </td>
+                    <td class="px-4 py-4">
+                        <?php if ($status): ?>
+                        <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            <?= e($status) ?>
+                        </span>
+                        <?php else: ?>
+                        <span class="text-slate-400">—</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-4 py-4 text-right">
+                        <div class="table-actions justify-end">
                             <a href="<?= BASE_URL ?>/observations/edit.php?id=<?= $row['id'] ?>&company_id=<?= $selectedCompanyId ?>" class="btn-action btn-action-edit">Edit</a>
                             <span class="table-action-sep">|</span>
                             <form method="POST" class="inline" onsubmit="return confirm('Delete this observation?');">
