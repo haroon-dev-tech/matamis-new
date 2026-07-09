@@ -108,7 +108,7 @@
             </a>
             <?php endif; ?>
 
-            <?php if (user_can($db, $uid, 'settings_users', 'read') || user_can($db, $uid, 'settings_roles', 'read')): ?>
+            <?php if (user_can($db, $uid, 'settings_users', 'read') || user_can($db, $uid, 'settings_roles', 'read') || user_can($db, $uid, 'settings_logs', 'read')): ?>
             <p class="nav-section-label mt-6">Settings</p>
             <?php if (user_can($db, $uid, 'settings_users', 'read')): ?>
             <a href="<?= BASE_URL ?>/settings/users.php" class="nav-link <?= $activeNav === 'settings-users' ? 'active' : '' ?>">
@@ -124,6 +124,14 @@
                     <svg class="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a4 4 0 00-4 4v1a3 3 0 003 3h2a3 3 0 003-3v-1a4 4 0 00-4-4zm-7 9h14M7 20h10"/></svg>
                 </span>
                 <span>Roles</span>
+            </a>
+            <?php endif; ?>
+            <?php if (user_can($db, $uid, 'settings_logs', 'read')): ?>
+            <a href="<?= BASE_URL ?>/settings/logs.php" class="nav-link <?= $activeNav === 'settings-logs' ? 'active' : '' ?>">
+                <span class="nav-link-icon">
+                    <svg class="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-6m3 6V7m3 10v-3m2 7H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z"/></svg>
+                </span>
+                <span>Logs</span>
             </a>
             <?php endif; ?>
             <?php endif; ?>

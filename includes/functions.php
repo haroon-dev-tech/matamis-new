@@ -683,7 +683,17 @@ function get_company_observation(PDO $db, int $observationId, int $companyId): ?
 function ensure_rbac_seeded(PDO $db): void
 {
     if (!empty($_SESSION['rbac_seeded'])) {
-        return;
+        try {
+            // If new permissions were added after a user session started,
+            // run seeding once again to backfill them.
+            $check = $db->prepare('SELECT id FROM permissions WHERE perm_key = ? LIMIT 1');
+            $check->execute(['settings_logs']);
+            if ($check->fetch()) {
+                return;
+            }
+        } catch (Exception $e) {
+            // Fall through and retry seeding.
+        }
     }
 
     try {
@@ -711,6 +721,7 @@ function ensure_rbac_seeded(PDO $db): void
         ['glance', 'Glance', 'Access glance picture insights'],
         ['settings_users', 'Settings: Users', 'Manage users and role assignment'],
         ['settings_roles', 'Settings: Roles', 'Manage roles and permissions'],
+        ['settings_logs', 'Settings: Logs', 'View activity and audit logs'],
     ];
 
     $db->beginTransaction();
@@ -720,8 +731,22 @@ function ensure_rbac_seeded(PDO $db): void
             $stmt->execute([$key, $label, $desc]);
         }
 
+        // Ensure Admin role automatically gets access to any newly seeded permissions.
+        $adminRoleStmt = $db->prepare('SELECT id FROM roles WHERE name = ? AND deleted_at IS NULL LIMIT 1');
+        $adminRoleStmt->execute(['Admin']);
+        $adminRoleId = (int) $adminRoleStmt->fetchColumn();
+        if ($adminRoleId > 0) {
+            $db->exec(
+                'INSERT IGNORE INTO role_permissions (role_id, permission_id, can_read, can_write)
+                 SELECT ' . $adminRoleId . ', p.id, 1, 1
+                 FROM permissions p
+                 WHERE p.perm_key IS NOT NULL'
+            );
+        }
+
         $db->commit();
         unset($_SESSION['rbac_disabled']);
+        unset($_SESSION['rbac_perm_cache']);
         $_SESSION['rbac_seeded'] = true;
     } catch (Exception $e) {
         $db->rollBack();
@@ -789,6 +814,9 @@ function infer_permission_for_request(string $scriptName, string $method): ?arra
     }
     if (strpos($path, '/settings/roles') !== false || strpos($path, '/settings/role_') !== false) {
         return ['settings_roles', $method === 'POST' ? 'write' : 'read'];
+    }
+    if (strpos($path, '/settings/logs') !== false) {
+        return ['settings_logs', 'read'];
     }
 
     $moduleMap = [
@@ -870,6 +898,7 @@ function get_default_landing_path(PDO $db, ?int $userId): string
         'glance' => '/glance/index.php',
         'settings_users' => '/settings/users.php',
         'settings_roles' => '/settings/roles.php',
+        'settings_logs' => '/settings/logs.php',
     ];
 
     foreach ($routes as $perm => $path) {
