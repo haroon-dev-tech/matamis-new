@@ -1,15 +1,15 @@
 <?php if (empty($periodRows)): ?>
 <div class="card p-12 text-center">
-    <p class="text-slate-500">No SOMFP data found for the selected filters.</p>
-    <a href="<?= BASE_URL ?>/somfp/index.php?company_id=<?= $selectedCompanyId ?>" class="btn-primary mt-4">Enter SOMFP Data</a>
+    <p class="text-slate-500">No Linked BS data found for the selected filters.</p>
+    <a href="<?= BASE_URL ?>/linked-bs/entry.php?company_id=<?= $selectedCompanyId ?>" class="btn-primary mt-4">Enter Linked BS Data</a>
 </div>
 <?php else: ?>
 
 <div class="card mb-6 overflow-hidden">
     <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
         <div>
-            <h2 class="font-semibold">Financial Position</h2>
-            <p class="mt-1 text-sm text-slate-500">Assets and liabilities by period (newest to oldest)</p>
+            <h2 class="font-semibold">Linked Balance Sheet</h2>
+            <p class="mt-1 text-sm text-slate-500">Assets, liabilities, and net worth by period (newest to oldest)</p>
         </div>
         <div class="chart-toolbar">
             <div class="chart-type-switcher" role="tablist" aria-label="Chart type">
@@ -50,6 +50,16 @@
                     <td><?= format_money($row['totals']['total_equity_liabilities']) ?></td>
                     <?php endforeach; ?>
                 </tr>
+                <tr>
+                    <td class="label-col">
+                        <span class="glance-combo-legend profit-loss" aria-hidden="true"></span>NET WORTH:
+                    </td>
+                    <?php foreach ($periodRows as $row): ?>
+                    <td class="<?= $row['totals']['net_worth'] >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
+                        <?= format_money($row['totals']['net_worth']) ?>
+                    </td>
+                    <?php endforeach; ?>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -66,6 +76,7 @@
     const labels = <?= json_encode($chartLabels) ?>;
     const assetsData = <?= json_encode($chartAssets) ?>;
     const liabilitiesData = <?= json_encode($chartLiabilities) ?>;
+    const netWorthData = <?= json_encode($chartNetWorth) ?>;
 
     let chartInstance = null;
     let activeType = 'line';
@@ -121,6 +132,21 @@
                 pointHoverRadius: isLineLike ? 6 : 0,
                 pointBackgroundColor: colors.liabilitiesBorder,
                 pointBorderColor: colors.liabilitiesBorder,
+            },
+            {
+                label: 'NET WORTH',
+                data: netWorthData,
+                backgroundColor: isLineLike ? 'rgba(22, 163, 74, 0.12)' : 'rgba(22, 163, 74, 0.8)',
+                borderColor: 'rgb(22, 163, 74)',
+                borderWidth: isLineLike ? 2 : 1,
+                borderRadius: type === 'bar' || isStacked ? 4 : 0,
+                fill: type === 'area',
+                tension: isLineLike ? 0.2 : 0,
+                pointStyle: 'rectRot',
+                pointRadius: isLineLike ? 5 : 0,
+                pointHoverRadius: isLineLike ? 6 : 0,
+                pointBackgroundColor: 'rgb(22, 163, 74)',
+                pointBorderColor: 'rgb(22, 163, 74)',
             },
         ];
     }
@@ -223,7 +249,7 @@
 
             const link = document.createElement('a');
             const stamp = new Date().toISOString().slice(0, 10);
-            link.download = 'financial-position-' + activeType + '-' + stamp + '.png';
+            link.download = 'linked-bs-glance-' + activeType + '-' + stamp + '.png';
             link.href = exportCanvas.toDataURL('image/png', 1.0);
             link.click();
         });

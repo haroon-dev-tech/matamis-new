@@ -1,15 +1,15 @@
 <?php if (empty($ciPeriodRows)): ?>
 <div class="card p-12 text-center">
-    <p class="text-slate-500">No SOMCI data found for the selected filters.</p>
-    <a href="<?= BASE_URL ?>/somci/index.php?company_id=<?= $selectedCompanyId ?>" class="btn-primary mt-4">Enter SOMCI Data</a>
+    <p class="text-slate-500">No Linked IS data found for the selected filters.</p>
+    <a href="<?= BASE_URL ?>/linked-is/entry.php?company_id=<?= $selectedCompanyId ?>" class="btn-primary mt-4">Enter Linked IS Data</a>
 </div>
 <?php else: ?>
 
 <div class="card mb-6 overflow-hidden" id="glance-ci-panel">
     <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
         <div>
-            <h2 class="font-semibold">Comprehensive Income</h2>
-            <p class="mt-1 text-sm text-slate-500">Revenue, expenses, and profit by period (newest to oldest)</p>
+            <h2 class="font-semibold">Linked Income Statement</h2>
+            <p class="mt-1 text-sm text-slate-500">Head totals from Linked IS structure by period (newest to oldest)</p>
         </div>
         <div class="chart-toolbar">
             <div class="chart-type-switcher" role="tablist" aria-label="Chart type">
@@ -34,47 +34,23 @@
         </div>
         <table class="glance-combo-table">
             <tbody>
+                <?php foreach ($ciHeadSeries as $series): ?>
                 <tr>
                     <td class="label-col">
-                        <span class="glance-combo-legend revenue" aria-hidden="true"></span>REVENUE:
+                        <span class="glance-combo-legend" aria-hidden="true" style="background: <?= e($series['color']) ?>;"></span><?= e(strtoupper($series['label'])) ?>:
                     </td>
                     <?php foreach ($ciPeriodRows as $row): ?>
-                    <td><?= format_money($row['totals']['total_revenue']) ?></td>
+                    <td><?= format_money($row['totals']['head_totals'][$series['head_id']] ?? 0) ?></td>
                     <?php endforeach; ?>
                 </tr>
+                <?php endforeach; ?>
                 <tr>
                     <td class="label-col">
-                        <span class="glance-combo-legend direct-expenses" aria-hidden="true"></span>DIRECT EXPENSES:
+                        <span class="glance-combo-legend profit-loss" aria-hidden="true"></span>NET PROFIT/LOSS:
                     </td>
                     <?php foreach ($ciPeriodRows as $row): ?>
-                    <td><?= format_money($row['totals']['total_direct_expenses']) ?></td>
-                    <?php endforeach; ?>
-                </tr>
-                <tr>
-                    <td class="label-col">
-                        <span class="glance-combo-legend gross-profit" aria-hidden="true"></span>GROSS PROFIT/LOSS:
-                    </td>
-                    <?php foreach ($ciPeriodRows as $row): ?>
-                    <td class="<?= $row['totals']['gross_profit_loss'] >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
-                        <?= format_money($row['totals']['gross_profit_loss']) ?>
-                    </td>
-                    <?php endforeach; ?>
-                </tr>
-                <tr>
-                    <td class="label-col">
-                        <span class="glance-combo-legend indirect-expenses" aria-hidden="true"></span>INDIRECT EXPENSES:
-                    </td>
-                    <?php foreach ($ciPeriodRows as $row): ?>
-                    <td><?= format_money($row['totals']['indirect_expenses']) ?></td>
-                    <?php endforeach; ?>
-                </tr>
-                <tr>
-                    <td class="label-col">
-                        <span class="glance-combo-legend profit-loss" aria-hidden="true"></span>PROFIT/LOSS:
-                    </td>
-                    <?php foreach ($ciPeriodRows as $row): ?>
-                    <td class="<?= $row['totals']['profit_loss'] >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
-                        <?= format_money($row['totals']['profit_loss']) ?>
+                    <td class="<?= $row['totals']['net_profit_loss'] >= 0 ? 'text-emerald-600' : 'text-red-600' ?>">
+                        <?= format_money($row['totals']['net_profit_loss']) ?>
                     </td>
                     <?php endforeach; ?>
                 </tr>
@@ -92,13 +68,7 @@
     if (!canvas || typeof Chart === 'undefined') return;
 
     const labels = <?= json_encode($ciChartLabels) ?>;
-    const series = [
-        { key: 'revenue', label: 'REVENUE', data: <?= json_encode($ciChartRevenue) ?>, border: 'rgb(5, 150, 105)', fill: 'rgba(5, 150, 105, 0.12)', bar: 'rgba(5, 150, 105, 0.8)' },
-        { key: 'direct', label: 'DIRECT EXPENSES', data: <?= json_encode($ciChartDirectExpenses) ?>, border: 'rgb(220, 38, 38)', fill: 'rgba(220, 38, 38, 0.12)', bar: 'rgba(220, 38, 38, 0.8)' },
-        { key: 'gross', label: 'GROSS PROFIT/LOSS', data: <?= json_encode($ciChartGrossProfit) ?>, border: 'rgb(37, 99, 235)', fill: 'rgba(37, 99, 235, 0.12)', bar: 'rgba(37, 99, 235, 0.8)' },
-        { key: 'indirect', label: 'INDIRECT EXPENSES', data: <?= json_encode($ciChartIndirectExpenses) ?>, border: 'rgb(217, 119, 6)', fill: 'rgba(217, 119, 6, 0.12)', bar: 'rgba(217, 119, 6, 0.8)' },
-        { key: 'profit', label: 'PROFIT/LOSS', data: <?= json_encode($ciChartProfitLoss) ?>, border: 'rgb(124, 58, 237)', fill: 'rgba(124, 58, 237, 0.12)', bar: 'rgba(124, 58, 237, 0.8)' },
-    ];
+    const series = <?= json_encode($ciSeriesForChart) ?>;
 
     let chartInstance = null;
     let activeType = 'line';
@@ -236,7 +206,7 @@
 
             const link = document.createElement('a');
             const stamp = new Date().toISOString().slice(0, 10);
-            link.download = 'comprehensive-income-' + activeType + '-' + stamp + '.png';
+            link.download = 'linked-is-glance-' + activeType + '-' + stamp + '.png';
             link.href = exportCanvas.toDataURL('image/png', 1.0);
             link.click();
         });

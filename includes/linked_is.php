@@ -194,6 +194,44 @@ function get_linked_is_entry_values(PDO $db, int $branchId, int $year, int $mont
     return ['values' => $values, 'entry_date' => $entryDate];
 }
 
+function get_previous_period(int $year, int $month): array
+{
+    if ($month <= 1) {
+        return ['year' => $year - 1, 'month' => 12];
+    }
+
+    return ['year' => $year, 'month' => $month - 1];
+}
+
+function get_consolidated_linked_is_entry_values(
+    PDO $db,
+    int $companyId,
+    int $year,
+    int $month,
+    ?int $branchId = null
+): array {
+    if ($branchId) {
+        return get_linked_is_entry_values($db, $branchId, $year, $month);
+    }
+
+    ensure_linked_is_tables($db);
+    $branches = get_company_branches($db, $companyId);
+    $values = [];
+    $entryDate = null;
+
+    foreach ($branches as $branch) {
+        $entryData = get_linked_is_entry_values($db, (int) $branch['id'], $year, $month);
+        foreach ($entryData['values'] as $itemId => $amount) {
+            $values[$itemId] = ($values[$itemId] ?? 0) + $amount;
+        }
+        if ($entryData['entry_date'] && (!$entryDate || $entryData['entry_date'] > $entryDate)) {
+            $entryDate = $entryData['entry_date'];
+        }
+    }
+
+    return ['values' => $values, 'entry_date' => $entryDate];
+}
+
 function calculate_linked_is_totals(array $structure, array $values): array
 {
     $headTotals = [];

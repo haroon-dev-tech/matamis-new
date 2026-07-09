@@ -3,130 +3,137 @@ $pageTitle = 'SOMFP — Statement of Financial Position';
 $activeNav = 'somfp';
 $requireAuth = true;
 require __DIR__ . '/../includes/bootstrap.php';
+require __DIR__ . '/../includes/linked_bs.php';
 
 $userId = current_user_id();
+$companyId = (int) ($_GET['company_id'] ?? 0);
+$branchId = (int) ($_GET['branch_id'] ?? 0);
+$year = (int) ($_GET['year'] ?? date('Y'));
+$month = (int) ($_GET['month'] ?? date('n'));
 
-$stmt = $db->prepare('SELECT id, name FROM companies WHERE user_id = ? AND ' . not_deleted() . ' ORDER BY name ASC');
-$stmt->execute([$userId]);
-$companies = $stmt->fetchAll();
+$companies = get_accessible_companies($db, $userId, 'somfp');
+if (!$companyId && !empty($companies)) {
+    $companyId = (int) $companies[0]['id'];
+}
 
-$selectedCompanyId = (int) ($_GET['company_id'] ?? ($companies[0]['id'] ?? 0));
-$selectedYear = (int) ($_GET['year'] ?? date('Y'));
-$selectedMonth = (int) ($_GET['month'] ?? date('n'));
+$company = null;
+$branches = [];
+$currentBranch = null;
+$structure = ['heads' => []];
+$values = [];
+$totals = ['head_totals' => [], 'calculated_total' => 0];
+$entryDate = null;
 
-$entries = [];
-if ($selectedCompanyId && user_owns_company($db, $selectedCompanyId, $userId)) {
-    $stmt = $db->prepare(
-        'SELECT b.id as branch_id, b.name as branch_name, b.is_head_office,
-                COUNT(se.id) as entry_count,
-                MAX(se.updated_at) as last_updated
-         FROM branches b
-         LEFT JOIN somfp_entries se ON se.branch_id = b.id
-             AND se.period_year = ? AND se.period_month = ? AND se.deleted_at IS NULL
-         WHERE b.company_id = ? AND b.deleted_at IS NULL
-         GROUP BY b.id
-         ORDER BY b.is_head_office DESC, b.name ASC'
-    );
-    $stmt->execute([$selectedYear, $selectedMonth, $selectedCompanyId]);
-    $entries = $stmt->fetchAll();
+if ($companyId && can_access_company($db, $companyId, $userId, 'somfp')) {
+    $stmt = $db->prepare('SELECT * FROM companies WHERE id = ? AND ' . not_deleted());
+    $stmt->execute([$companyId]);
+    $company = $stmt->fetch();
+    $branches = get_company_branches($db, $companyId);
+
+    if (!empty($branches)) {
+        if (!$branchId) {
+            $branchId = (int) $branches[0]['id'];
+        }
+
+        foreach ($branches as $b) {
+            if ((int) $b['id'] === $branchId) {
+                $currentBranch = $b;
+                break;
+            }
+        }
+        if (!$currentBranch) {
+            $currentBranch = $branches[0];
+            $branchId = (int) $currentBranch['id'];
+        }
+
+        $structure = get_linked_bs_structure($db, $companyId);
+        $entryData = get_linked_bs_entry_values($db, $branchId, $year, $month);
+        $values = $entryData['values'];
+        $entryDate = $entryData['entry_date'];
+        $totals = calculate_linked_bs_totals($structure, $values);
+    }
 }
 
 require __DIR__ . '/../includes/header.php';
 ?>
 
-<div class="mb-6">
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
     <p class="text-sm text-slate-500 dark:text-slate-400">
-        Statement of Financial Position — Monthly (SOMFP)
+        Statement of Financial Position (SOMFP) — read-only view of Linked BS data
     </p>
 </div>
 
 <div class="card mb-6 p-6">
-    <form method="GET" class="flex flex-wrap items-end gap-4">
-        <div class="min-w-[200px] flex-1">
+    <form method="GET" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div>
             <label class="mb-1.5 block text-sm font-medium">Company</label>
             <select name="company_id" class="input-field" onchange="this.form.submit()">
                 <?php foreach ($companies as $co): ?>
-                <option value="<?= $co['id'] ?>" <?= $co['id'] == $selectedCompanyId ? 'selected' : '' ?>><?= e($co['name']) ?></option>
+                <option value="<?= $co['id'] ?>" <?= $co['id'] == $companyId ? 'selected' : '' ?>><?= e($co['name']) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
-        <div class="w-32">
+        <div>
+            <label class="mb-1.5 block text-sm font-medium">Branch</label>
+            <select name="branch_id" class="input-field">
+                <?php foreach ($branches as $b): ?>
+                <option value="<?= $b['id'] ?>" <?= $b['id'] == $branchId ? 'selected' : '' ?>><?= e($b['name']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div>
             <label class="mb-1.5 block text-sm font-medium">Year</label>
             <select name="year" class="input-field">
-                <?php for ($y = date('Y'); $y >= date('Y') - 5; $y--): ?>
-                <option value="<?= $y ?>" <?= $y == $selectedYear ? 'selected' : '' ?>><?= $y ?></option>
+                <?php for ($y = (int) date('Y'); $y >= (int) date('Y') - 5; $y--): ?>
+                <option value="<?= $y ?>" <?= $y == $year ? 'selected' : '' ?>><?= $y ?></option>
                 <?php endfor; ?>
             </select>
         </div>
-        <div class="w-40">
+        <div>
             <label class="mb-1.5 block text-sm font-medium">Month</label>
             <select name="month" class="input-field">
                 <?php foreach (MONTHS as $m => $label): ?>
-                <option value="<?= $m ?>" <?= $m == $selectedMonth ? 'selected' : '' ?>><?= $label ?></option>
+                <option value="<?= $m ?>" <?= $m == $month ? 'selected' : '' ?>><?= $label ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
-        <button type="submit" class="btn-primary">Filter</button>
-        <?php if ($selectedCompanyId): ?>
-        <a href="<?= BASE_URL ?>/somfp/entry.php?company_id=<?= $selectedCompanyId ?>&year=<?= $selectedYear ?>&month=<?= $selectedMonth ?>" class="btn-secondary">New / Edit Entry</a>
-        <a href="<?= BASE_URL ?>/somfp/view.php?company_id=<?= $selectedCompanyId ?>&year=<?= $selectedYear ?>&month=<?= $selectedMonth ?>" class="btn-secondary">Consolidated View</a>
-        <?php endif; ?>
+        <div class="flex items-end">
+            <button type="submit" class="btn-primary w-full">Filter</button>
+        </div>
     </form>
 </div>
 
 <?php if (empty($companies)): ?>
 <div class="card p-12 text-center">
-    <p class="text-slate-500">Register a company first to enter SOMFP data.</p>
+    <p class="text-slate-500">Register a company first to view SOMFP data.</p>
     <a href="<?= BASE_URL ?>/companies/create.php" class="btn-primary mt-4">Register Company</a>
 </div>
-<?php elseif (!empty($entries)): ?>
+<?php elseif (empty($branches)): ?>
+<div class="card p-12 text-center">
+    <p class="text-slate-500">This company has no branches.</p>
+    <a href="<?= BASE_URL ?>/companies/view.php?id=<?= $companyId ?>" class="btn-primary mt-4">Manage Company</a>
+</div>
+<?php elseif (empty($structure['heads'])): ?>
+<div class="card p-12 text-center">
+    <p class="text-slate-500">No Linked BS structure configured for this company.</p>
+    <?php if (user_can($db, $userId, 'linked_bs', 'write')): ?>
+    <a href="<?= BASE_URL ?>/linked-bs/structure.php?company_id=<?= $companyId ?>" class="btn-primary mt-4">Configure Structure</a>
+    <?php endif; ?>
+</div>
+<?php else: ?>
+<div class="mb-4">
+    <h2 class="text-lg font-semibold"><?= e($company['name']) ?> — <?= e($currentBranch['name']) ?></h2>
+    <p class="text-sm text-slate-500">
+        <?= e(MONTHS[$month]) ?> <?= $year ?> · Statement of Monthly Financial Position
+        <?php if ($entryDate): ?> · Entry date: <?= e(date('d M Y', strtotime($entryDate))) ?><?php endif; ?>
+    </p>
+</div>
+
 <div class="card overflow-hidden">
-    <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-        <h2 class="font-semibold"><?= e(MONTHS[$selectedMonth]) ?> <?= $selectedYear ?> — Branch Status</h2>
-    </div>
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-                    <th class="px-6 py-3 text-left font-semibold">Branch</th>
-                    <th class="px-6 py-3 text-center font-semibold">Status</th>
-                    <th class="px-6 py-3 text-left font-semibold">Last Updated</th>
-                    <th class="px-6 py-3 text-right font-semibold">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-                <?php foreach ($entries as $entry): ?>
-                <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                    <td class="px-6 py-4 font-medium">
-                        <?= e($entry['branch_name']) ?>
-                        <?php if ($entry['is_head_office']): ?>
-                        <span class="ml-1 text-xs text-brand-600">(HO)</span>
-                        <?php endif; ?>
-                    </td>
-                    <td class="px-6 py-4 text-center">
-                        <?php if ($entry['entry_count'] > 0): ?>
-                        <span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Entered</span>
-                        <?php else: ?>
-                        <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">Pending</span>
-                        <?php endif; ?>
-                    </td>
-                    <td class="px-6 py-4 text-slate-500">
-                        <?= $entry['last_updated'] ? date('d M Y H:i', strtotime($entry['last_updated'])) : '—' ?>
-                    </td>
-                    <td class="px-6 py-4 text-right">
-                        <div class="table-actions">
-                            <a href="<?= BASE_URL ?>/sofp/view.php?company_id=<?= $selectedCompanyId ?>&year=<?= $selectedYear ?>&month=<?= $selectedMonth ?>&branch_id=<?= $entry['branch_id'] ?>" class="btn-action btn-action-view">View</a>
-                            <span class="table-action-sep">|</span>
-                            <a href="<?= BASE_URL ?>/somfp/entry.php?company_id=<?= $selectedCompanyId ?>&branch_id=<?= $entry['branch_id'] ?>&year=<?= $selectedYear ?>&month=<?= $selectedMonth ?>" class="btn-action btn-action-edit">
-                                <?= $entry['entry_count'] > 0 ? 'Edit' : 'Enter' ?>
-                            </a>
-                        </div>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
+    <?php
+    $editable = false;
+    require __DIR__ . '/../linked-bs/partials/entry_table.php';
+    ?>
 </div>
 <?php endif; ?>
 
