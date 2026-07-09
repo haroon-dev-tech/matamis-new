@@ -147,7 +147,8 @@ INSERT INTO permissions (perm_key, label, description) VALUES
 ('soci', 'SOCI', 'Access overall statement of comprehensive income'),
 ('glance', 'Glance', 'Access glance picture insights'),
 ('settings_users', 'Settings: Users', 'Manage users and role assignment'),
-('settings_roles', 'Settings: Roles', 'Manage roles and permissions')
+('settings_roles', 'Settings: Roles', 'Manage roles and permissions'),
+('settings_logs', 'Settings: Logs', 'View activity and audit logs')
 ON DUPLICATE KEY UPDATE label = VALUES(label);
 
 -- Seed admin role and grant all permissions (read+write)
