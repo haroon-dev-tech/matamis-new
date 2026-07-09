@@ -3,12 +3,12 @@ $pageTitle = 'Glance Picture';
 $activeNav = 'glance';
 $requireAuth = true;
 require __DIR__ . '/../includes/bootstrap.php';
+require __DIR__ . '/../includes/linked_bs.php';
+require __DIR__ . '/../includes/linked_is.php';
 
 $userId = current_user_id();
 
-$stmt = $db->prepare('SELECT id, name FROM companies WHERE user_id = ? AND ' . not_deleted() . ' ORDER BY name ASC');
-$stmt->execute([$userId]);
-$companies = $stmt->fetchAll();
+$companies = get_accessible_companies($db, $userId, 'glance');
 
 $filtersSubmitted = isset($_GET['applied']);
 $selectedCompanyId = (int) ($_GET['company_id'] ?? ($companies[0]['id'] ?? 0));
@@ -17,9 +17,9 @@ $yearTo = (int) ($_GET['year_to'] ?? 0);
 $monthFrom = (int) ($_GET['month_from'] ?? 0);
 $monthTo = (int) ($_GET['month_to'] ?? 0);
 $branchId = (int) ($_GET['branch_id'] ?? 0);
-$activeTab = $_GET['tab'] ?? 'financial-position';
-if (!in_array($activeTab, ['financial-position', 'comprehensive-income'], true)) {
-    $activeTab = 'financial-position';
+$activeTab = $_GET['tab'] ?? 'linked-bs';
+if (!in_array($activeTab, ['linked-bs', 'linked-is'], true)) {
+    $activeTab = 'linked-bs';
 }
 
 $branches = [];
@@ -30,30 +30,39 @@ $periodRowCount = 0;
 $chartLabels = [];
 $chartAssets = [];
 $chartLiabilities = [];
+$chartNetWorth = [];
 $ciPeriodRows = [];
+$ciHeadSeries = [];
 $ciChartLabels = [];
-$ciChartRevenue = [];
-$ciChartDirectExpenses = [];
-$ciChartGrossProfit = [];
-$ciChartIndirectExpenses = [];
-$ciChartProfitLoss = [];
+$ciSeriesForChart = [];
 
-if ($selectedCompanyId && user_owns_company($db, $selectedCompanyId, $userId)) {
+if ($selectedCompanyId && can_access_company($db, $selectedCompanyId, $userId, 'glance')) {
     $branches = get_company_branches($db, $selectedCompanyId);
-    $availableYears = $activeTab === 'comprehensive-income'
-        ? get_available_somci_years($db, $selectedCompanyId, $userId)
-        : get_available_somfp_years($db, $selectedCompanyId, $userId);
+    $linkedBsStructure = get_linked_bs_structure($db, $selectedCompanyId);
+    $linkedIsStructure = get_linked_is_structure($db, $selectedCompanyId);
 
-    if (!$filtersSubmitted) {
-        if (empty($yearFrom) && !empty($availableYears)) {
-            $yearFrom = (int) min($availableYears);
-        }
-        if (empty($yearTo) && !empty($availableYears)) {
-            $yearTo = (int) max($availableYears);
-        } elseif (empty($yearTo)) {
+    $tableName = $activeTab === 'linked-is' ? 'linked_is_entries' : 'linked_bs_entries';
+
+    $yearSql = "SELECT DISTINCT se.period_year
+                FROM {$tableName} se
+                INNER JOIN branches b ON b.id = se.branch_id
+                WHERE b.company_id = ? AND b.deleted_at IS NULL AND se.deleted_at IS NULL";
+    $yearParams = [$selectedCompanyId];
+    if ($branchId > 0) {
+        $yearSql .= ' AND se.branch_id = ?';
+        $yearParams[] = $branchId;
+    }
+    $yearSql .= ' ORDER BY se.period_year DESC';
+    $stmt = $db->prepare($yearSql);
+    $stmt->execute($yearParams);
+    $availableYears = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+
+    if (!$filtersSubmitted || (empty($yearFrom) && empty($yearTo))) {
+        if (!empty($availableYears)) {
+            $yearTo = (int) $availableYears[0];
+            $yearFrom = (int) $availableYears[count($availableYears) - 1];
+        } else {
             $yearTo = (int) date('Y');
-        }
-        if (empty($yearFrom)) {
             $yearFrom = $yearTo;
         }
     }
@@ -74,19 +83,50 @@ if ($selectedCompanyId && user_owns_company($db, $selectedCompanyId, $userId)) {
         'branch_id'  => $branchId ?: null,
     ];
 
-    if ($activeTab === 'financial-position') {
-        $periods = get_somfp_periods($db, $selectedCompanyId, $userId, $filters);
+    $periodSql = "SELECT se.period_year, se.period_month,
+                         COUNT(DISTINCT se.branch_id) AS branch_count,
+                         MAX(se.updated_at) AS last_updated
+                  FROM {$tableName} se
+                  INNER JOIN branches b ON b.id = se.branch_id
+                  WHERE b.company_id = ? AND b.deleted_at IS NULL AND se.deleted_at IS NULL";
+    $periodParams = [$selectedCompanyId];
+    if ($branchId > 0) {
+        $periodSql .= ' AND se.branch_id = ?';
+        $periodParams[] = $branchId;
+    }
+    [$periodRangeSql, $periodRangeParams] = apply_period_range_sql('se', $yearFrom, $yearTo, $monthFrom, $monthTo);
+    $periodSql .= $periodRangeSql;
+    $periodParams = array_merge($periodParams, $periodRangeParams);
+    $periodSql .= ' GROUP BY se.period_year, se.period_month ORDER BY se.period_year DESC, se.period_month DESC';
+    $stmt = $db->prepare($periodSql);
+    $stmt->execute($periodParams);
+    $periods = $stmt->fetchAll();
 
+    if ($activeTab === 'linked-bs') {
         foreach ($periods as $period) {
-            $values = get_consolidated_period_values(
+            $valuesData = get_consolidated_linked_bs_entry_values(
                 $db,
                 $selectedCompanyId,
                 (int) $period['period_year'],
                 (int) $period['period_month'],
                 $branchId ?: null
             );
-            $totals = calculate_somfp_totals($values);
+            $totals = calculate_linked_bs_totals($linkedBsStructure, $valuesData['values']);
+            $assetTotal = 0.0;
+            $liabilityTotal = 0.0;
+            foreach ($linkedBsStructure['heads'] as $head) {
+                $label = strtolower((string) ($head['label'] ?? ''));
+                $headTotal = (float) ($totals['head_totals'][$head['id']] ?? 0);
+                if (strpos($label, 'asset') !== false) {
+                    $assetTotal += $headTotal;
+                } else {
+                    $liabilityTotal += $headTotal;
+                }
+            }
             $periodRows[] = array_merge($period, ['totals' => $totals]);
+            $periodRows[count($periodRows) - 1]['totals']['total_assets'] = $assetTotal;
+            $periodRows[count($periodRows) - 1]['totals']['total_equity_liabilities'] = $liabilityTotal;
+            $periodRows[count($periodRows) - 1]['totals']['net_worth'] = $assetTotal - $liabilityTotal;
         }
 
         $periodRowCount = count($periodRows);
@@ -96,32 +136,85 @@ if ($selectedCompanyId && user_owns_company($db, $selectedCompanyId, $userId)) {
             $chartLabels[] = substr(MONTHS[$month], 0, 3) . '-' . substr((string) $year, -2);
             $chartAssets[] = round($row['totals']['total_assets'], 2);
             $chartLiabilities[] = round($row['totals']['total_equity_liabilities'], 2);
+            $chartNetWorth[] = round($row['totals']['net_worth'], 2);
         }
     } else {
-        $periods = get_somci_periods($db, $selectedCompanyId, $userId, $filters);
+        $headColors = [
+            'rgb(5, 150, 105)',
+            'rgb(220, 38, 38)',
+            'rgb(37, 99, 235)',
+            'rgb(217, 119, 6)',
+            'rgb(124, 58, 237)',
+            'rgb(236, 72, 153)',
+            'rgb(14, 165, 233)',
+            'rgb(132, 204, 22)',
+        ];
 
         foreach ($periods as $period) {
-            $values = get_consolidated_somci_period_values(
+            $valuesData = get_consolidated_linked_is_entry_values(
                 $db,
                 $selectedCompanyId,
                 (int) $period['period_year'],
                 (int) $period['period_month'],
                 $branchId ?: null
             );
-            $totals = calculate_somci_totals($values);
+            $totals = calculate_linked_is_totals($linkedIsStructure, $valuesData['values']);
+
+            $derived = [
+                'total_revenue' => 0.0,
+                'total_direct_expenses' => 0.0,
+                'gross_profit_loss' => 0.0,
+                'indirect_expenses' => 0.0,
+                'profit_loss' => (float) ($totals['net_profit_loss'] ?? 0),
+            ];
+
+            foreach ($linkedIsStructure['heads'] as $head) {
+                $label = strtolower((string) ($head['label'] ?? ''));
+                $headTotal = (float) ($totals['head_totals'][$head['id']] ?? 0);
+                if (strpos($label, 'revenue') !== false) {
+                    $derived['total_revenue'] += $headTotal;
+                } elseif (strpos($label, 'direct') !== false) {
+                    $derived['total_direct_expenses'] += $headTotal;
+                } elseif (strpos($label, 'operating') !== false || strpos($label, 'administrative') !== false || strpos($label, 'other expenses') !== false) {
+                    $derived['indirect_expenses'] += $headTotal;
+                }
+            }
+            $derived['gross_profit_loss'] = $derived['total_revenue'] - $derived['total_direct_expenses'];
+
             $ciPeriodRows[] = array_merge($period, ['totals' => $totals]);
+            $ciPeriodRows[count($ciPeriodRows) - 1]['totals'] = array_merge($ciPeriodRows[count($ciPeriodRows) - 1]['totals'], $derived);
+        }
+
+        foreach ($linkedIsStructure['heads'] as $index => $head) {
+            $ciHeadSeries[] = [
+                'head_id' => (int) $head['id'],
+                'label' => $head['label'],
+                'color' => $headColors[$index % count($headColors)],
+                'values' => [],
+            ];
         }
 
         $periodRowCount = count($ciPeriodRows);
-        foreach ($ciPeriodRows as $row) {
+        foreach ($ciPeriodRows as $rowIndex => $row) {
             $month = (int) $row['period_month'];
             $year = (int) $row['period_year'];
             $ciChartLabels[] = substr(MONTHS[$month], 0, 3) . '-' . substr((string) $year, -2);
-            $ciChartRevenue[] = round($row['totals']['total_revenue'], 2);
-            $ciChartDirectExpenses[] = round($row['totals']['total_direct_expenses'], 2);
-            $ciChartGrossProfit[] = round($row['totals']['gross_profit_loss'], 2);
-            $ciChartIndirectExpenses[] = round($row['totals']['indirect_expenses'], 2);
-            $ciChartProfitLoss[] = round($row['totals']['profit_loss'], 2);
+
+            foreach ($ciHeadSeries as $seriesIndex => $series) {
+                $value = round((float) ($row['totals']['head_totals'][$series['head_id']] ?? 0), 2);
+                $ciHeadSeries[$seriesIndex]['values'][] = $value;
+            }
+        }
+
+        foreach ($ciHeadSeries as $series) {
+            $rgb = $series['color'];
+            $ciSeriesForChart[] = [
+                'label' => $series['label'],
+                'data' => $series['values'],
+                'border' => $rgb,
+                'fill' => str_replace('rgb(', 'rgba(', str_replace(')', ', 0.12)', $rgb)),
+                'bar' => str_replace('rgb(', 'rgba(', str_replace(')', ', 0.8)', $rgb)),
+            ];
         }
     }
 }
@@ -141,7 +234,7 @@ require __DIR__ . '/../includes/header.php';
 
 <div class="mb-6">
     <p class="text-sm text-slate-500 dark:text-slate-400">
-        Balance sheet glance — financial position and comprehensive income overview
+        Glance overview — linked balance sheet and linked income statement
     </p>
 </div>
 
@@ -156,7 +249,7 @@ require __DIR__ . '/../includes/header.php';
     <form method="GET" action="<?= BASE_URL ?>/glance/index.php" class="space-y-4">
         <input type="hidden" name="tab" value="<?= e($activeTab) ?>">
         <input type="hidden" name="applied" value="1">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="grid gap-4 sm:grid-cols-2">
             <div>
                 <label class="mb-1.5 block text-sm font-medium">Company</label>
                 <select name="company_id" class="input-field">
@@ -174,28 +267,22 @@ require __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div>
-                <label class="mb-1.5 block text-sm font-medium">Year From</label>
-                <select name="year_from" class="input-field">
-                    <?php foreach ($yearOptions as $y): ?>
-                    <option value="<?= $y ?>" <?= $y == $yearFrom ? 'selected' : '' ?>><?= $y ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div>
-                <label class="mb-1.5 block text-sm font-medium">Year To</label>
-                <select name="year_to" class="input-field">
-                    <?php foreach ($yearOptions as $y): ?>
-                    <option value="<?= $y ?>" <?= $y == $yearTo ? 'selected' : '' ?>><?= $y ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
                 <label class="mb-1.5 block text-sm font-medium">Month From</label>
                 <select name="month_from" class="input-field">
                     <option value="0">All Months</option>
                     <?php foreach (MONTHS as $m => $label): ?>
                     <option value="<?= $m ?>" <?= $m == $monthFrom ? 'selected' : '' ?>><?= $label ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div>
+                <label class="mb-1.5 block text-sm font-medium">Year From</label>
+                <select name="year_from" class="input-field">
+                    <?php foreach ($yearOptions as $y): ?>
+                    <option value="<?= $y ?>" <?= $y == $yearFrom ? 'selected' : '' ?>><?= $y ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -208,6 +295,14 @@ require __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div>
+                <label class="mb-1.5 block text-sm font-medium">Year To</label>
+                <select name="year_to" class="input-field">
+                    <?php foreach ($yearOptions as $y): ?>
+                    <option value="<?= $y ?>" <?= $y == $yearTo ? 'selected' : '' ?>><?= $y ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
         </div>
         <div class="flex flex-wrap gap-3">
             <button type="submit" class="btn-primary">Apply Filters</button>
@@ -217,13 +312,13 @@ require __DIR__ . '/../includes/header.php';
 </div>
 
 <div class="glance-tabs mb-6">
-    <a href="<?= BASE_URL ?>/glance/index.php<?= report_filter_query(array_merge($filterQueryBase, ['tab' => 'financial-position'])) ?>"
-       class="glance-tab <?= $activeTab === 'financial-position' ? 'active' : '' ?>">
-        Financial Position
+    <a href="<?= BASE_URL ?>/glance/index.php<?= report_filter_query(array_merge($filterQueryBase, ['tab' => 'linked-bs'])) ?>"
+       class="glance-tab <?= $activeTab === 'linked-bs' ? 'active' : '' ?>">
+        Linked BS
     </a>
-    <a href="<?= BASE_URL ?>/glance/index.php<?= report_filter_query(array_merge($filterQueryBase, ['tab' => 'comprehensive-income'])) ?>"
-       class="glance-tab <?= $activeTab === 'comprehensive-income' ? 'active' : '' ?>">
-        Comprehensive Income
+    <a href="<?= BASE_URL ?>/glance/index.php<?= report_filter_query(array_merge($filterQueryBase, ['tab' => 'linked-is'])) ?>"
+       class="glance-tab <?= $activeTab === 'linked-is' ? 'active' : '' ?>">
+        Linked IS
     </a>
 </div>
 
@@ -236,7 +331,7 @@ require __DIR__ . '/../includes/header.php';
 </div>
 <?php endif; ?>
 
-<?php if ($activeTab === 'financial-position'): ?>
+<?php if ($activeTab === 'linked-bs'): ?>
     <?php require __DIR__ . '/partials/financial_position.php'; ?>
 <?php else: ?>
     <?php require __DIR__ . '/partials/comprehensive_income.php'; ?>
