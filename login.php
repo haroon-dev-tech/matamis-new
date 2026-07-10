@@ -11,19 +11,26 @@ require __DIR__ . '/includes/header.php';
 ?>
 
 <div class="auth-shell auth-shell-login flex min-h-screen items-center justify-center p-4">
+    <div class="auth-bg-layer auth-bg-layer--mesh" aria-hidden="true"></div>
+    <div class="auth-bg-layer auth-bg-layer--aurora auth-bg-layer--aurora-1" aria-hidden="true"></div>
+    <div class="auth-bg-layer auth-bg-layer--aurora auth-bg-layer--aurora-2" aria-hidden="true"></div>
+    <div class="auth-bg-layer auth-bg-layer--aurora auth-bg-layer--aurora-3" aria-hidden="true"></div>
     <div class="auth-bg-orb auth-bg-orb--1" aria-hidden="true"></div>
     <div class="auth-bg-orb auth-bg-orb--2" aria-hidden="true"></div>
     <div class="auth-bg-orb auth-bg-orb--3" aria-hidden="true"></div>
+    <div class="auth-bg-orb auth-bg-orb--4" aria-hidden="true"></div>
+    <div class="auth-bg-beam" aria-hidden="true"></div>
     <div class="auth-grid-overlay" aria-hidden="true"></div>
+    <div class="auth-bg-spotlight" aria-hidden="true"></div>
 
     <div class="auth-login-wrap">
         <div class="auth-logo-wrap mb-8 text-center">
             <img
-                src="<?= e(asset_url(APP_LOGO_FULL)) ?>"
+                src="<?= e(versioned_asset(APP_LOGO)) ?>"
                 alt="<?= e(APP_SHORT) ?> logo"
-                class="auth-logo-img mx-auto h-16 w-16"
-                width="64"
-                height="64"
+                class="auth-logo-img mx-auto h-24 w-24 object-contain"
+                width="96"
+                height="96"
             >
             <h1 class="mt-5 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Mata Consultancy</h1>
             <p class="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-brand-600 dark:text-brand-400">MIS Platform</p>
@@ -52,11 +59,6 @@ require __DIR__ . '/includes/header.php';
                 </div>
                 <button type="submit" class="auth-btn-signin btn-primary w-full">Sign In</button>
             </form>
-
-            <p class="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
-                Don't have an account?
-                <a href="<?= BASE_URL ?>/register.php" class="font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400">Create one</a>
-            </p>
         </div>
 
         <div class="mt-5 flex items-center justify-center">

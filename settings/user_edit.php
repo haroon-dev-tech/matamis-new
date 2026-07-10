@@ -6,6 +6,7 @@ require __DIR__ . '/../includes/bootstrap.php';
 
 $actorId = current_user_id();
 require_permission($db, $actorId, 'settings_users', 'write');
+ensure_user_profile_columns($db);
 
 $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 if ($id <= 0) {
@@ -13,7 +14,7 @@ if ($id <= 0) {
     redirect('/settings/users.php');
 }
 
-$stmt = $db->prepare('SELECT id, full_name, email, created_at FROM users WHERE id = ? AND deleted_at IS NULL');
+$stmt = $db->prepare('SELECT id, full_name, email, phone, designation, created_at FROM users WHERE id = ? AND deleted_at IS NULL');
 $stmt->execute([$id]);
 $user = $stmt->fetch();
 if (!$user) {
@@ -36,13 +37,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $fullName = trim($_POST['full_name'] ?? '');
         $email = trim($_POST['email'] ?? '');
+        $phone = trim($_POST['phone'] ?? '');
+        $designation = trim($_POST['designation'] ?? '');
         $password = $_POST['password'] ?? '';
         $roleIds = isset($_POST['role_ids']) && is_array($_POST['role_ids']) ? array_map('intval', $_POST['role_ids']) : [];
 
-        if ($fullName === '' || $email === '') {
-            $error = 'Name and email are required.';
+        if ($fullName === '' || $email === '' || $phone === '' || $designation === '') {
+            $error = 'Name, email, phone and designation are required.';
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
+        } elseif (!preg_match('/^[0-9+\-\s()]{7,30}$/', $phone)) {
+            $error = 'Please enter a valid phone number.';
         } else {
             $stmt = $db->prepare('SELECT id FROM users WHERE email = ? AND id != ? AND deleted_at IS NULL');
             $stmt->execute([$email, $id]);
@@ -57,11 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             throw new RuntimeException('Password must be at least 6 characters.');
                         }
                         $hash = password_hash($password, PASSWORD_DEFAULT);
-                        $stmt = $db->prepare('UPDATE users SET full_name = ?, email = ?, password = ? WHERE id = ?');
-                        $stmt->execute([$fullName, $email, $hash, $id]);
+                        $stmt = $db->prepare('UPDATE users SET full_name = ?, email = ?, phone = ?, designation = ?, password = ? WHERE id = ?');
+                        $stmt->execute([$fullName, $email, $phone, $designation, $hash, $id]);
                     } else {
-                        $stmt = $db->prepare('UPDATE users SET full_name = ?, email = ? WHERE id = ?');
-                        $stmt->execute([$fullName, $email, $id]);
+                        $stmt = $db->prepare('UPDATE users SET full_name = ?, email = ?, phone = ?, designation = ? WHERE id = ?');
+                        $stmt->execute([$fullName, $email, $phone, $designation, $id]);
                     }
 
                     $db->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$id]);
@@ -111,6 +116,14 @@ require __DIR__ . '/../includes/header.php';
         <div>
             <label class="mb-1.5 block text-sm font-medium">Email</label>
             <input type="email" name="email" class="input-field" value="<?= e($_POST['email'] ?? $user['email']) ?>" required>
+        </div>
+        <div>
+            <label class="mb-1.5 block text-sm font-medium">Phone</label>
+            <input type="tel" name="phone" class="input-field" placeholder="+971 50 123 4567" value="<?= e($_POST['phone'] ?? ($user['phone'] ?? '')) ?>" required>
+        </div>
+        <div>
+            <label class="mb-1.5 block text-sm font-medium">Designation</label>
+            <input type="text" name="designation" class="input-field" placeholder="e.g. Finance Manager" value="<?= e($_POST['designation'] ?? ($user['designation'] ?? '')) ?>" required>
         </div>
         <div>
             <label class="mb-1.5 block text-sm font-medium">New Password (optional)</label>

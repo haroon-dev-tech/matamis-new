@@ -6,6 +6,7 @@ require __DIR__ . '/../includes/bootstrap.php';
 
 $userId = current_user_id();
 require_permission($db, $userId, 'settings_users', 'write');
+ensure_user_profile_columns($db);
 
 $error = null;
 
@@ -18,13 +19,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $fullName = trim($_POST['full_name'] ?? '');
         $email = trim($_POST['email'] ?? '');
+        $phone = trim($_POST['phone'] ?? '');
+        $designation = trim($_POST['designation'] ?? '');
         $password = $_POST['password'] ?? '';
         $roleIds = isset($_POST['role_ids']) && is_array($_POST['role_ids']) ? array_map('intval', $_POST['role_ids']) : [];
 
-        if ($fullName === '' || $email === '' || $password === '') {
-            $error = 'Name, email and password are required.';
+        if ($fullName === '' || $email === '' || $phone === '' || $designation === '' || $password === '') {
+            $error = 'Name, email, phone, designation and password are required.';
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
+        } elseif (!preg_match('/^[0-9+\-\s()]{7,30}$/', $phone)) {
+            $error = 'Please enter a valid phone number.';
         } elseif (strlen($password) < 6) {
             $error = 'Password must be at least 6 characters.';
         } else {
@@ -36,8 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $db->beginTransaction();
                     $hash = password_hash($password, PASSWORD_DEFAULT);
-                    $stmt = $db->prepare('INSERT INTO users (full_name, email, password) VALUES (?, ?, ?)');
-                    $stmt->execute([$fullName, $email, $hash]);
+                    $stmt = $db->prepare('INSERT INTO users (full_name, email, phone, designation, password) VALUES (?, ?, ?, ?, ?)');
+                    $stmt->execute([$fullName, $email, $phone, $designation, $hash]);
                     $newUserId = (int) $db->lastInsertId();
 
                     if (!empty($roleIds)) {
@@ -82,6 +87,14 @@ require __DIR__ . '/../includes/header.php';
         <div>
             <label class="mb-1.5 block text-sm font-medium">Email</label>
             <input type="email" name="email" class="input-field" value="<?= e($_POST['email'] ?? '') ?>" required>
+        </div>
+        <div>
+            <label class="mb-1.5 block text-sm font-medium">Phone</label>
+            <input type="tel" name="phone" class="input-field" placeholder="+971 50 123 4567" value="<?= e($_POST['phone'] ?? '') ?>" required>
+        </div>
+        <div>
+            <label class="mb-1.5 block text-sm font-medium">Designation</label>
+            <input type="text" name="designation" class="input-field" placeholder="e.g. Finance Manager" value="<?= e($_POST['designation'] ?? '') ?>" required>
         </div>
         <div>
             <label class="mb-1.5 block text-sm font-medium">Password</label>

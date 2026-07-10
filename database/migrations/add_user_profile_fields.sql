@@ -1,0 +1,3 @@
+ALTER TABLE users
+ADD COLUMN phone VARCHAR(30) NULL AFTER email,
+ADD COLUMN designation VARCHAR(150) NULL AFTER phone;
