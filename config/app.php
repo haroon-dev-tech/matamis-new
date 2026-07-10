@@ -16,11 +16,20 @@ if (!defined('BASE_URL')) {
 
 define('APP_NAME', 'Mata Consultancy MIS');
 define('APP_SHORT', 'Mata MIS');
-define('APP_LOGO_MARK', '/assets/images/mata-logo-mark.svg');
-define('APP_LOGO_FULL', '/assets/images/mata-logo.svg');
+define('APP_LOGO', '/assets/images/logo.png');
+define('APP_LOGO_MARK', APP_LOGO);
+define('APP_LOGO_FULL', APP_LOGO);
 
 $appCssPath = dirname(__DIR__) . '/assets/css/app.css';
-define('APP_ASSET_VERSION', file_exists($appCssPath) ? (string) filemtime($appCssPath) : '1');
+$appLogoPath = dirname(__DIR__) . '/assets/images/logo.png';
+$assetVersions = [];
+if (file_exists($appCssPath)) {
+    $assetVersions[] = filemtime($appCssPath);
+}
+if (file_exists($appLogoPath)) {
+    $assetVersions[] = filemtime($appLogoPath);
+}
+define('APP_ASSET_VERSION', $assetVersions !== [] ? (string) max($assetVersions) : '1');
 
 define('MONTHS', [
     1  => 'January', 2  => 'February', 3  => 'March',

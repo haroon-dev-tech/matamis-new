@@ -38,6 +38,8 @@ $homePath = is_logged_in() ? '/index.php' : '/login.php';
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="<?= e(versioned_asset(APP_LOGO)) ?>">
+    <link rel="apple-touch-icon" href="<?= e(versioned_asset(APP_LOGO)) ?>">
     <style>
         body { font-family: Inter, system-ui, sans-serif; }
     </style>
@@ -55,7 +57,7 @@ $homePath = is_logged_in() ? '/index.php' : '/login.php';
 
         <div class="relative w-full max-w-2xl rounded-3xl border border-slate-200/80 bg-white/90 p-8 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 sm:p-10">
             <div class="mb-6 inline-flex items-center gap-3 rounded-full bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 dark:bg-brand-950/70 dark:text-brand-300">
-                <img src="<?= e(asset_url(APP_LOGO_MARK)) ?>" alt="<?= e(APP_SHORT) ?> logo" class="h-5 w-5">
+                <img src="<?= e(versioned_asset(APP_LOGO)) ?>" alt="<?= e(APP_SHORT) ?> logo" class="h-8 w-8 object-contain">
                 <?= e(APP_SHORT) ?>
             </div>
 

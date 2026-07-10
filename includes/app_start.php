@@ -2,7 +2,7 @@
     <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-40 flex w-[17.5rem] -translate-x-full flex-col transition-transform duration-300 ease-out lg:static lg:translate-x-0">
         <div class="sidebar-brand">
             <div class="sidebar-brand-mark">
-                <img src="<?= e(asset_url(APP_LOGO_MARK)) ?>" alt="<?= e(APP_SHORT) ?> logo" class="sidebar-brand-logo">
+                <img src="<?= e(versioned_asset(APP_LOGO)) ?>" alt="<?= e(APP_SHORT) ?> logo" class="sidebar-brand-logo">
             </div>
             <div class="min-w-0">
                 <p class="truncate text-sm font-semibold tracking-tight text-white">Mata Consultancy</p>
@@ -147,6 +147,10 @@
                     <p class="truncate text-xs text-slate-400"><?= e($currentUser['email']) ?></p>
                 </div>
             </div>
+            <a href="<?= BASE_URL ?>/settings/change_password.php" class="sidebar-account-link <?= $activeNav === 'change-password' ? 'is-active' : '' ?>">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                Change Password
+            </a>
             <a href="<?= BASE_URL ?>/logout.php" class="sidebar-signout">
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                 Sign Out
@@ -162,6 +166,13 @@
                 <button id="sidebar-toggle" type="button" class="icon-btn lg:hidden" aria-label="Open menu">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
+                <img
+                    src="<?= e(versioned_asset(APP_LOGO)) ?>"
+                    alt="<?= e(APP_SHORT) ?> logo"
+                    class="app-header-logo h-8 w-8 shrink-0 object-contain lg:hidden"
+                    width="32"
+                    height="32"
+                >
                 <div>
                     <p class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400"><?= e(APP_SHORT) ?></p>
                     <h1 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-white"><?= e($pageTitle) ?></h1>

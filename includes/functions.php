@@ -680,6 +680,31 @@ function get_company_observation(PDO $db, int $observationId, int $companyId): ?
     return $row ?: null;
 }
 
+function ensure_user_profile_columns(PDO $db): void
+{
+    static $checked = false;
+    if ($checked) {
+        return;
+    }
+    $checked = true;
+
+    $columns = [
+        'phone' => 'ADD COLUMN phone VARCHAR(30) NULL AFTER email',
+        'designation' => 'ADD COLUMN designation VARCHAR(150) NULL AFTER phone',
+    ];
+
+    try {
+        foreach ($columns as $column => $alterSql) {
+            $stmt = $db->query("SHOW COLUMNS FROM users LIKE " . $db->quote($column));
+            if (!$stmt->fetch()) {
+                $db->exec('ALTER TABLE users ' . $alterSql);
+            }
+        }
+    } catch (Exception $e) {
+        // Do not break app boot if migration cannot run.
+    }
+}
+
 function ensure_rbac_seeded(PDO $db): void
 {
     if (!empty($_SESSION['rbac_seeded'])) {

@@ -6,6 +6,7 @@ require __DIR__ . '/../includes/bootstrap.php';
 
 $userId = current_user_id();
 require_permission($db, $userId, 'settings_users', 'read');
+ensure_user_profile_columns($db);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
     require_permission($db, $userId, 'settings_users', 'write');
@@ -32,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_user_id'])) {
 }
 
 $stmt = $db->query(
-    'SELECT u.id, u.full_name, u.email, u.created_at,
+    'SELECT u.id, u.full_name, u.email, u.phone, u.designation, u.created_at,
             GROUP_CONCAT(r.name ORDER BY r.name SEPARATOR ", ") AS roles
      FROM users u
      LEFT JOIN user_roles ur ON ur.user_id = u.id
@@ -65,6 +66,8 @@ require __DIR__ . '/../includes/header.php';
                 <tr class="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
                     <th class="px-6 py-3 text-left font-semibold">Name</th>
                     <th class="px-6 py-3 text-left font-semibold">Email</th>
+                    <th class="px-6 py-3 text-left font-semibold">Phone</th>
+                    <th class="px-6 py-3 text-left font-semibold">Designation</th>
                     <th class="px-6 py-3 text-left font-semibold">Roles</th>
                     <th class="px-6 py-3 text-left font-semibold">Created</th>
                     <th class="px-6 py-3 text-right font-semibold">Actions</th>
@@ -75,6 +78,8 @@ require __DIR__ . '/../includes/header.php';
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/30">
                     <td class="px-6 py-4 font-medium"><?= e($u['full_name']) ?></td>
                     <td class="px-6 py-4 text-slate-500"><?= e($u['email']) ?></td>
+                    <td class="px-6 py-4 text-slate-500"><?= e($u['phone'] ?: '—') ?></td>
+                    <td class="px-6 py-4 text-slate-500"><?= e($u['designation'] ?: '—') ?></td>
                     <td class="px-6 py-4">
                         <span class="text-slate-500"><?= e($u['roles'] ?: '—') ?></span>
                     </td>

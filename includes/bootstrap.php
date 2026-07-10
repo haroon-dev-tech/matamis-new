@@ -18,6 +18,7 @@ $flash = get_flash();
 log_current_request($db, $currentUser);
 
 if (!empty($requireAuth) && $currentUser) {
+    ensure_user_profile_columns($db);
     ensure_rbac_seeded($db);
     $required = infer_permission_for_request($_SERVER['SCRIPT_NAME'] ?? '', $_SERVER['REQUEST_METHOD'] ?? 'GET');
     if ($required) {
